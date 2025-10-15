@@ -7,4 +7,4 @@ python manage.py collectstatic --no-input
 python manage.py migrate
 
 # 3. Starts the Gunicorn web server
-gunicorn sentiment_project.wsgi:application
+gunicorn sentiment_project.wsgi:application --bind 0.0.0.0:$PORT
