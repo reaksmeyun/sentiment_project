@@ -11,6 +11,9 @@ from django.db.models import Count
 from django.db.models.functions import ExtractWeekDay 
 from datetime import date, timedelta 
 
+# 🚨 NEW: Import NLTK for smart word cloud filtering
+import nltk 
+
 import joblib
 import pickle
 from tensorflow.keras.models import load_model
@@ -35,11 +38,33 @@ except Exception as e:
     MODELS_LOADED = False
 
 
-# --- HELPER: Standardized Pre-processing Function (Model Consistency Fix) ---
+# 🚨 NEW: Aggressive Stop Word List for Smart Filtering
+# This list ensures common noise words are excluded even if their POS tag is accepted.
+VERY_AGGRESSIVE_STOP_WORDS = {
+    # Basic Stop Words
+    'the', 'a', 'an', 'is', 'it', 'to', 'and', 'of', 'i', 'my', 'that', 
+    
+    # Words Cluttering Your Word Cloud
+    'was', 'for', 'you', 'with', 'have', 'are', 'they', 'them', 'but', 
+    'were', 'what', 'more', 'which', 'than', 'some', 'when', 'all', 'from',
+    'get', 'dont', 'there', 'around', 'came', 'like', 'any', 'pretty', 
+    'not', 'these', 'had', 'few', 'place', 'about', 'this', 'one', 'our', 
+    'does', 'got', 'very', 'here', 'back', 'can', 'or', 'just', 'only', 
+    'really', 'would', 'could', 'know', 'said', 'go', 'went', 'us', 'we', 
+    'little', 'much', 'too', 'making', 'make', 'use', 'using', 'next', 'first',
+    
+    # Topic Words (Customize this for your specific reviews)
+    'pizza', 'food', 'service', 'restaurant', 'order', 'menu', 'salsa', 
+    'cream', 'fish', 'calzone', 'app', 'model', 'data'
+}
+
+
+# ----------------------------------------
+# --- HELPER FUNCTIONS ---
+# ----------------------------------------
+
 def clean_text(text):
-    """
-    Standardizes text cleaning. MUST match cleaning used before TF-IDF training.
-    """
+    """Standardizes text cleaning."""
     if not isinstance(text, str) or not text.strip():
         return ""
     
@@ -49,7 +74,7 @@ def clean_text(text):
     # 2. Remove URLs
     text = re.sub(r'http\S+|www\S+|https\S+', '', text, flags=re.MULTILINE)
     
-    # 3. Remove punctuation and numbers (Critical for TF-IDF if used in training)
+    # 3. Remove punctuation and numbers
     text = re.sub(r'[^\w\s]', '', text) 
     text = re.sub(r'\d+', '', text)
     
@@ -59,15 +84,8 @@ def clean_text(text):
     return text
 
 
-# sentiment_app/views.py (The final, corrected predict_sentiment function)
-
 def predict_sentiment(text, model_type='lr'):
-    """
-    Predict sentiment using Logistic Regression ('lr'), Linear SVC ('svc'), or LSTM ('lstm').
-    
-    CRITICAL FIX: Enforce label based on max probability to bypass Scikit-learn's
-    inconsistent .predict() type in Django environments.
-    """
+    # ... (function body remains the same as it doesn't need POS tagging)
     if not MODELS_LOADED:
         return "Neutral", ["50.00%", "50.00%"]
 
@@ -75,33 +93,26 @@ def predict_sentiment(text, model_type='lr'):
     if not text:
         return "Neutral", ["50.00%", "50.00%"]
 
-    probs = [0.5, 0.5] # Default to 50/50
+    probs = [0.5, 0.5]
+    CONFIDENCE_THRESHOLD = 0.60
 
     try:
         if model_type == 'lr':
-            # Use predict_proba()
             X = tfidf_vectorizer.transform([text])
             probs = logistic_model.predict_proba(X)[0]
-
         elif model_type == 'svc':
-            # Use decision_function() and softmax to get pseudo-probabilities
             X = tfidf_vectorizer.transform([text])
             decision = svc_model.decision_function(X)[0]
-            probs = softmax([-decision, decision]) # [Negative, Positive]
-
+            probs = softmax([-decision, decision])
         elif model_type == 'lstm':
-            # Use model.predict() directly (it returns probabilities)
             seq = lstm_tokenizer.texts_to_sequences([text])
             padded = pad_sequences(seq, maxlen=MAX_LEN)
             probs = lstm_model.predict(padded, verbose=0)[0] 
         
         # --- ROBUST LABEL ASSIGNMENT ---
-        
-        # Determine the class (0 or 1) with the highest probability
         max_prob_index = probs.argmax()
         
-        # If the highest probability is over a confidence threshold (e.g., 60%)
-        if probs[max_prob_index] > 0.60: 
+        if probs[max_prob_index] > CONFIDENCE_THRESHOLD: 
             if max_prob_index == 1:
                 final_label = 'Positive'
             elif max_prob_index == 0:
@@ -109,34 +120,88 @@ def predict_sentiment(text, model_type='lr'):
             else:
                 final_label = 'Neutral' 
         else:
-            # If confidence is low, assign Neutral
             final_label = 'Neutral'
             
         pred_label = final_label
 
     except Exception as e:
-        # Catch all model errors and default gracefully
         pred_label = 'Neutral'
         
     probs_percent = [f"{p*100:.2f}%" for p in probs]
     return pred_label, probs_percent
-# --- HELPER FUNCTIONS (No change) ---
+
+
 def update_word_counts(text, sentiment):
-    """Tokenizes text and updates the WordCount model."""
-    words = re.findall(r'\b\w+\b', clean_text(text)) 
-    stop_words = {'the', 'a', 'an', 'is', 'it', 'to', 'and', 'of', 'i', 'my', 'that'}
+    """
+    Tokenizes text, filters by Part-of-Speech, and updates the WordCount model.
+    (Used for single-text analysis only). 🚨 NOW USES POS TAGGING
+    """
+    cleaned_text = clean_text(text)
     
-    for word in words:
-        if len(word) < 3 or word in stop_words: 
-            continue
-        word_record, created = WordCount.objects.get_or_create(
-            word=word,
-            sentiment=sentiment,
-            defaults={'count': 1}
-        )
-        if not created:
-            word_record.count += 1
-            word_record.save()
+    # 1. Tokenize and POS tag the cleaned text
+    words_and_tags = nltk.pos_tag(nltk.word_tokenize(cleaned_text))
+    
+    # 2. Define POS tags to keep (Adjectives, Adverbs, Verbs)
+    SENTIMENT_TAGS = {'JJ', 'JJR', 'JJS', 'RB', 'RBR', 'RBS', 'VB', 'VBD', 'VBG', 'VBN'}
+    
+    for word, tag in words_and_tags:
+        word = word.lower()
+        
+        # 3. Apply smart filtering logic:
+        is_sentiment_word = tag in SENTIMENT_TAGS
+        is_stop_word = word in VERY_AGGRESSIVE_STOP_WORDS
+        is_long_enough = len(word) >= 3
+
+        if is_sentiment_word and not is_stop_word and is_long_enough:
+            word_record, created = WordCount.objects.get_or_create(
+                word=word,
+                sentiment=sentiment,
+                defaults={'count': 1}
+            )
+            if not created:
+                word_record.count += 1
+                word_record.save()
+
+
+def collect_words(text, sentiment, words_to_update):
+    """
+    Aggregates word counts in a dictionary using POS filtering.
+    (Used for bulk CSV analysis). 🚨 NOW USES POS TAGGING
+    """
+    cleaned_text = clean_text(text)
+    
+    # 1. Tokenize and POS tag the cleaned text
+    words_and_tags = nltk.pos_tag(nltk.word_tokenize(cleaned_text))
+    
+    # 2. Define POS tags to keep
+    SENTIMENT_TAGS = {'JJ', 'JJR', 'JJS', 'RB', 'RBR', 'RBS', 'VB', 'VBD', 'VBG', 'VBN'}
+
+    for word, tag in words_and_tags:
+        word = word.lower()
+        
+        # 3. Apply smart filtering logic:
+        is_sentiment_word = tag in SENTIMENT_TAGS
+        is_stop_word = word in VERY_AGGRESSIVE_STOP_WORDS
+        is_long_enough = len(word) >= 3
+
+        if is_sentiment_word and not is_stop_word and is_long_enough:
+            # Aggregate count in the dictionary (in memory)
+            words_to_update[sentiment][word] = words_to_update[sentiment].get(word, 0) + 1
+
+
+def bulk_update_word_counts(words_to_update):
+    """Efficiently updates the WordCount table using the aggregated dictionary."""
+    for sentiment, word_counts in words_to_update.items():
+        for word, count_increment in word_counts.items():
+            # Try to update existing record
+            try:
+                word_record = WordCount.objects.get(word=word, sentiment=sentiment)
+                word_record.count += count_increment
+                word_record.save()
+            # If not found, create a new record
+            except WordCount.DoesNotExist:
+                WordCount.objects.create(word=word, sentiment=sentiment, count=count_increment)
+
 
 def get_word_cloud_data(sentiment):
     """Retrieves top words formatted for wordcloud2.js."""
@@ -145,9 +210,7 @@ def get_word_cloud_data(sentiment):
 
 
 def get_sentiment_trend_data():
-    """
-    Retrieves sentiment trend data dynamically from the database for the last 7 days.
-    """
+    """Retrieves sentiment trend data dynamically from the database for the last 7 days."""
     start_date = date.today() - timedelta(days=7)
     
     sentiment_counts = AnalysisRecord.objects.filter(
@@ -164,11 +227,11 @@ def get_sentiment_trend_data():
         'labels': DAY_LABELS,
         'positive': [0] * 7,
         'negative': [0] * 7,
-        'accuracy_trend': [85, 87, 86, 88, 89, 87, 85] # Mocked
+        'accuracy_trend': [75, 78, 80, 82, 85, 87, 85] # Mocked/Placeholder
     }
     
     for item in sentiment_counts:
-        index = item['day'] - 1 # Convert DB's 1-7 index to Python's 0-6 index
+        index = item['day'] - 1 
         
         if 0 <= index < 7:
             if item['result'] == 'Positive':
@@ -179,12 +242,19 @@ def get_sentiment_trend_data():
     return trend_data
 
 
+# ----------------------------------------
+# --- MAIN VIEW FUNCTIONS ---
+# ----------------------------------------
+
 def bulk_analyze_csv(uploaded_file, column_name, algorithm, request):
     """
     Reads a CSV file, analyzes the specified column, and returns a summary.
+    🚨 OPTIMIZED: Aggregates word counts in memory before bulk updating the DB.
     """
     summary = {'total': 0, 'Positive': 0, 'Negative': 0, 'Neutral': 0}
     new_analysis_records = []
+    
+    words_to_update = {'Positive': {}, 'Negative': {}} 
     
     try:
         file_data = uploaded_file.read().decode('utf-8')
@@ -216,11 +286,16 @@ def bulk_analyze_csv(uploaded_file, column_name, algorithm, request):
                         algorithm=algorithm
                     )
                 )
+                
+                # Calls the smart, POS-filtered collector
                 if pred_label in ('Positive', 'Negative'):
-                    update_word_counts(text, pred_label)
-                    
+                    collect_words(text, pred_label, words_to_update)
+                        
         if new_analysis_records:
             AnalysisRecord.objects.bulk_create(new_analysis_records)
+
+        # Efficiently update WordCount table once after the loop
+        bulk_update_word_counts(words_to_update)
 
         if summary['total'] > 0:
             summary['Positive_perc'] = f"{(summary['Positive'] / summary['total']) * 100:.2f}"
@@ -233,24 +308,25 @@ def bulk_analyze_csv(uploaded_file, column_name, algorithm, request):
         return {'total': 0, 'Positive': 0, 'Negative': 0, 'Neutral': 0, 'error': str(e)}
 
 
-# sentiment_app/views.py (Only the corrected dashboard function is shown)
-
 def dashboard(request):
     
-    sentiment_trend_data = get_sentiment_trend_data()
     performance_data = [75, 82, 90] 
 
-    # 1. Initialize context with data that doesn't change based on POST, or needs defaults
+    # 1. Initialize context with defaults for form fields
     context = {
         'result': None,
         'probs_percent': None,
         'bulk_summary': None, 
         'performance_data': performance_data,
-        'sentiment_trend_data': json.dumps(sentiment_trend_data),
         'analysis_history': AnalysisRecord.objects.all().order_by('-analyzed_at')[:20],
-        # Temporarily set to None/Defaults, they will be fetched later in POST or before GET render
         'positive_words': None,
         'negative_words': None,
+        'sentiment_trend_data': None,
+        
+        # 💡 Set defaults for the form fields
+        'selected_algorithm': 'lr', 
+        'column_name': 'text',      
+        'input_text': '',           
     }
 
     if request.method == 'POST':
@@ -259,18 +335,19 @@ def dashboard(request):
         csv_file = request.FILES.get('csv_file')
         column_name = request.POST.get('column_name', 'text')
 
+        # 🚀 FIX: Update context with submitted values to maintain form state
+        context['selected_algorithm'] = algorithm
+        context['column_name'] = column_name
+        context['input_text'] = input_text
+        
         model_key_map = {'lr': 'lr', 'svc': 'svc', 'lstm': 'lstm'}
         model_key = model_key_map.get(algorithm) 
 
+        # We keep the old check for non-valid algorithm, but the state is already set
         if not model_key:
-            # Re-fetch the dynamic context data before rendering on error/no model
-            context['positive_words'] = json.dumps(get_word_cloud_data('Positive'))
-            context['negative_words'] = json.dumps(get_word_cloud_data('Negative'))
-            return render(request, 'dashboard.html', context)
+            pass # The rest of the page data loading below will still run
         
-        
-        if csv_file:
-            # The bulk_analyze_csv function already calls update_word_counts internally
+        elif csv_file:
             summary = bulk_analyze_csv(csv_file, column_name, model_key, request)
             context['bulk_summary'] = summary
             
@@ -280,24 +357,21 @@ def dashboard(request):
             context['result'] = pred_label
             context['probs_percent'] = probs_percent
             
-            # Save analysis and update word counts
             AnalysisRecord.objects.create(
                 input_text=input_text,
                 result=pred_label,
                 algorithm=algorithm
             )
             
-            # This is the call that updates the database
+            # Calls the smart, POS-filtered single-text updater
             if pred_label in ('Positive', 'Negative'):
                 update_word_counts(input_text, pred_label)
         
-    # 2. FINAL DATA FETCH (CRITICAL STEP)
-    # This block executes after POST data is saved OR for an initial GET request.
-    # It ensures the word cloud data reflects the most recent database changes.
+    # 2. FINAL DATA FETCH (Runs for both GET and POST)
+    # This must run after the POST logic so it can fetch the updated history/word counts
     context['analysis_history'] = AnalysisRecord.objects.all().order_by('-analyzed_at')[:20]
     context['positive_words'] = json.dumps(get_word_cloud_data('Positive'))
     context['negative_words'] = json.dumps(get_word_cloud_data('Negative'))
     context['sentiment_trend_data'] = json.dumps(get_sentiment_trend_data())
         
-    return render(request, 'dashboard.html', context)           
-    
+    return render(request, 'dashboard.html', context)
