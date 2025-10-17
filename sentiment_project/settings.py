@@ -15,13 +15,10 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # ------------------------------------------------------------
 # SECURITY
 # ------------------------------------------------------------
-SECRET_KEY = os.environ.get(
-    "DJANGO_SECRET_KEY",
-    "django-insecure-o3jsux&+kfxd)h4(55rt+z+a6x3&cp@t*p3lble3_4be=#2gke"  # fallback for local use
-)
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "<fallback-for-local>")
 
 # Turn off debug automatically on Render
-DEBUG = os.environ.get("DEBUG", "True") == "True"
+DEBUG = os.environ.get("DEBUG", "False") == "True"
 
 ALLOWED_HOSTS = ["*", "localhost", "127.0.0.1"]
 
