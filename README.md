@@ -21,8 +21,6 @@ The project has two main parts: **AI models** and **Web interface**.
 - `0` → negative  
 - `4` → positive  
 
-Emoji handling is done using `emoji.demojize()` so the model can understand emojis.  
-
 ---
 
 ## ⚙️ Features
@@ -40,7 +38,6 @@ Emoji handling is done using `emoji.demojize()` so the model can understand emoj
 - Display sentiment predictions for uploaded data  
 - **Word cloud visualization** for frequent words in the dataset  
 - **Sentiment trend over time** graph  
-- Supports emojis in input  
 - Integration with pre-trained AI models  
 - Real-time results for non-technical users  
 
