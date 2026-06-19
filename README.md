@@ -10,91 +10,64 @@ license: mit
 
 # HappySad AI — Sentiment Analysis Web App
 
-A Django web app that classifies tweet/text sentiment as **positive** or **negative** using three models: Logistic Regression, LinearSVC, and LSTM.
+Analyze tweets and text to classify sentiment as **positive** or **negative** using Machine Learning and Deep Learning models.
+
+**Live demo:** [huggingface.co/spaces/reaksmeyun12345/happysad-ai](https://huggingface.co/spaces/reaksmeyun12345/happysad-ai)
 
 ---
 
-## Table of Contents
+## What It Does
 
-1. [Project Structure](#project-structure)
-2. [Prerequisites](#prerequisites)
-3. [Quick Start (Local)](#quick-start-local)
-4. [Environment Variables](#environment-variables)
-5. [Pre-trained Models](#pre-trained-models)
-6. [Dataset](#dataset)
-7. [Features](#features)
-8. [Deployment (Render)](#deployment-render)
-9. [Development Notes](#development-notes)
+- Type any text or tweet → get **Positive / Negative** prediction
+- Upload a **CSV file** of tweets → get batch predictions
+- Choose between 3 AI models: **Logistic Regression**, **LinearSVC**, or **LSTM**
+- View a **word cloud** of most frequent words
+- See a **sentiment trend chart** over time
 
 ---
 
-## Project Structure
+## Models Used
 
-```
-sentiment_project/
-├── manage.py
-├── Dockerfile                  # Hugging Face Spaces deployment
-├── start.sh                    # Render startup script
-├── requirements_render.txt     # Production dependencies
-├── requirements_backup.txt     # Backup/reference deps
-├── .python-version             # Python 3.11.9
-│
-├── saved_models/               # Pre-trained model files (see below)
-│   ├── logistic_regression.pkl
-│   ├── linear_svc.pkl
-│   ├── tfidf_vectorizer.pkl
-│   ├── lstm_model_full.keras
-│   ├── lstm_tokenizer.pkl
-│   └── max_len.pkl
-│
-├── sentiment_project/          # Django project config
-│   ├── settings.py
-│   ├── urls.py
-│   ├── wsgi.py
-│   └── asgi.py
-│
-└── sentiment_app/              # Main Django app
-    ├── models.py               # AnalysisRecord, WordCount
-    ├── views.py                # Prediction + dashboard logic
-    ├── urls.py
-    ├── templates/
-    │   └── dashboard.html
-    └── static/
-```
+| Model | Type | Description |
+|---|---|---|
+| Logistic Regression | Machine Learning | Fast, lightweight classifier |
+| LinearSVC | Machine Learning | High-accuracy linear classifier |
+| LSTM | Deep Learning | Neural network for sequence understanding |
+
+All models trained on the [Sentiment140 dataset](https://www.kaggle.com/datasets/kazanova/sentiment140) (~1.6 million tweets).
 
 ---
 
-## Prerequisites
+## Run Locally
 
-- Python **3.11.9** (see `.python-version`)
-- `pip`
-- (Optional) `virtualenv` or `pyenv`
+### Requirements
+- Python 3.11.9
+- pip
 
----
-
-## Quick Start (Local)
+### Steps
 
 ```bash
-# 1. Clone
+# 1. Clone the repo
 git clone https://github.com/reaksmeyun/sentiment_project.git
 cd sentiment_project
 
-# 2. Create and activate virtual environment
+# 2. Create virtual environment
 python -m venv venv
-source venv/bin/activate        # Windows: venv\Scripts\activate
+source venv/bin/activate       # Windows: venv\Scripts\activate
 
 # 3. Install dependencies
 pip install -r requirements_render.txt
 
-# 4. Download NLTK data (run once)
-python -c "import nltk; nltk.download('stopwords'); nltk.download('punkt')"
+# 4. Download NLTK data (one-time setup)
+python -c "import nltk; nltk.download('stopwords'); nltk.download('punkt'); nltk.download('punkt_tab')"
 
-# 5. Place model files in saved_models/ (see Pre-trained Models section)
+# 5. Download pre-trained models into saved_models/ folder
+#    Link: https://drive.google.com/drive/folders/1lIGeVWsw2qdwA3TkzXVzdtwbwcJa2k-H
 
-# 6. Run migrations
+# 6. Run database migrations
 python manage.py migrate
 
-# 7. Start the dev server
+# 7. Start the server
 python manage.py runserver
 ```
 
@@ -102,34 +75,11 @@ Open [http://127.0.0.1:8000](http://127.0.0.1:8000) in your browser.
 
 ---
 
-## Environment Variables
-
-| Variable           | Default              | Description                        |
-|--------------------|----------------------|------------------------------------|
-| `DJANGO_SECRET_KEY`| `<fallback-for-local>`| Django secret key (set in prod)   |
-| `DEBUG`            | `False`              | Set to `True` for local dev        |
-| `PORT`             | —                    | Port for gunicorn (set by Render)  |
-
-For local dev, create a `.env` file or export variables manually:
-
-```bash
-export DEBUG=True
-export DJANGO_SECRET_KEY=your-local-secret-key
-```
-
-> `.env` is **not** committed — never commit secrets.
-
----
-
 ## Pre-trained Models
 
-The model files are **not included** in the repo (too large for Git).
+Download from Google Drive and place in `saved_models/`:
 
-Download them from Google Drive and place them inside `saved_models/`:
-
-[Download from Google Drive](https://drive.google.com/drive/folders/1lIGeVWsw2qdwA3TkzXVzdtwbwcJa2k-H?usp=sharing)
-
-Expected files:
+[Download Models (Google Drive)](https://drive.google.com/drive/folders/1lIGeVWsw2qdwA3TkzXVzdtwbwcJa2k-H?usp=sharing)
 
 ```
 saved_models/
@@ -141,74 +91,99 @@ saved_models/
 └── max_len.pkl
 ```
 
-> If any model file is missing, the app will still run — that model's predictions will be unavailable and an error will be logged.
+> Models are automatically downloaded during Docker/Hugging Face build — you only need this for local setup.
 
 ---
 
-## Dataset
+## Environment Variables
 
-- **Sentiment140** — ~1.6 million tweets
-- Source: [Kaggle](https://www.kaggle.com/datasets/kazanova/sentiment140)
-- After downloading, rename the file to `semtiment140_analysis_dataset.csv`
-- Sentiment mapping: `0` = negative, `4` = positive
+| Variable | Required | Description |
+|---|---|---|
+| `DJANGO_SECRET_KEY` | Yes (prod) | Django secret key |
+| `DEBUG` | No | Set `True` for local dev, `False` for production |
 
-The dataset is only needed if you want to **retrain** the models. The web app uses the pre-trained files from `saved_models/`.
+For local development:
+```bash
+export DEBUG=True
+export DJANGO_SECRET_KEY=any-random-string-for-local
+```
 
 ---
 
-## Features
+## Project Structure
 
-| Feature | Description |
+```
+sentiment_project/
+├── Dockerfile                  # Hugging Face Spaces deployment
+├── start.sh                    # Render startup script
+├── requirements_render.txt     # All dependencies
+├── manage.py
+│
+├── saved_models/               # Pre-trained model files (not in git)
+│   ├── logistic_regression.pkl
+│   ├── linear_svc.pkl
+│   ├── tfidf_vectorizer.pkl
+│   ├── lstm_model_full.keras
+│   ├── lstm_tokenizer.pkl
+│   └── max_len.pkl
+│
+├── sentiment_project/          # Django settings, URLs, WSGI
+│   └── settings.py
+│
+└── sentiment_app/              # Main app
+    ├── views.py                # Prediction logic
+    ├── models.py               # Database models
+    ├── templates/dashboard.html
+    └── static/
+```
+
+---
+
+## Deploy to Hugging Face Spaces (Free)
+
+Already deployed at the live demo link above. To deploy your own copy:
+
+1. Create a [Hugging Face](https://huggingface.co) account
+2. Create a new Space → choose **Docker** → **Blank**
+3. Push this repo to the Space:
+
+```bash
+git remote add hf https://huggingface.co/spaces/YOUR_USERNAME/YOUR_SPACE_NAME
+git push hf main
+```
+
+4. Add environment variable in Space Settings:
+   - `DJANGO_SECRET_KEY` = any long random string
+
+The Dockerfile handles everything: installs packages, downloads models, runs migrations, starts the server.
+
+---
+
+## Deploy to Render (Alternative)
+
+1. Connect your GitHub repo on [render.com](https://render.com)
+2. Set:
+   - **Build command:** `pip install -r requirements_render.txt`
+   - **Start command:** `bash start.sh`
+   - **Instance type:** Free
+3. Add environment variables:
+   - `DJANGO_SECRET_KEY` = any long random string
+   - `DEBUG` = `False`
+
+> Note: Render free tier has 512MB RAM which may be tight with TensorFlow. Hugging Face Spaces (2GB RAM) is recommended.
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
 |---|---|
-| Single text prediction | Type or paste text, get sentiment + confidence |
-| CSV batch upload | Upload a CSV of tweets, get results for all rows |
-| Model selector | Choose between Logistic Regression, LinearSVC, or LSTM |
-| Word cloud | Visualizes most frequent words from analyzed data |
-| Sentiment trend | Chart of sentiment over time (by day of week) |
-
----
-
-## Deployment
-
-### Hugging Face Spaces (Primary — Free, 2GB RAM)
-Deployed via Docker. Push to `https://huggingface.co/spaces/reaksmeyun12345/happysad-ai`.
-
-### Render (Alternative)
-**Build command:** `pip install -r requirements_render.txt`
-**Start command:** `bash start.sh`
-Set env vars: `DJANGO_SECRET_KEY`, `DEBUG=False`
-
----
-
-## Development Notes
-
-**Adding a new model**
-
-1. Train and save the model as a `.pkl` or `.keras` file into `saved_models/`
-2. Load it in `sentiment_app/views.py` inside the `try` block (around line 27)
-3. Add prediction logic and wire it to the template selector
-
-**Database**
-
-- Uses SQLite locally (`db.sqlite3`)
-- For production, switch to PostgreSQL via `DATABASE_URL` env var if needed
-- Migrations live in `sentiment_app/migrations/`
-
-**Static files**
-
-- Served by [WhiteNoise](https://whitenoise.readthedocs.io) in production
-- Run `python manage.py collectstatic` before deploying
-
-**Key dependencies**
-
-| Package | Purpose |
-|---|---|
-| `django` | Web framework |
-| `tensorflow` | LSTM model inference |
-| `scikit-learn` | ML model inference |
-| `joblib` | Model serialization |
-| `nltk` | Text preprocessing |
-| `wordcloud` | Word cloud generation |
-| `plotly` | Trend charts |
-| `whitenoise` | Static file serving |
-| `gunicorn` | Production WSGI server |
+| Web framework | Django 5.2 |
+| ML models | scikit-learn (Logistic Regression, LinearSVC) |
+| Deep learning | TensorFlow / Keras (LSTM) |
+| Text processing | NLTK, TF-IDF |
+| Visualizations | Plotly, WordCloud |
+| Static files | WhiteNoise |
+| Production server | Gunicorn |
+| Database | SQLite |
+| Containerization | Docker |
