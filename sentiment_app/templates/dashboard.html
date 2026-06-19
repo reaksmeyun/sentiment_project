@@ -10,7 +10,6 @@
     <link rel="shortcut icon" href="{% static 'project/favicon.ico' %}" type="image/x-icon">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/wordcloud@1.1.0/src/wordcloud2.js"></script>
     <style>
         body { font-family: 'Inter', sans-serif; }
 
@@ -69,13 +68,17 @@
                     <h3 class="text-lg font-semibold text-gray-700 border-b pb-2">2. Analyze Bulk CSV File</h3>
 
                     <div class="flex flex-col sm:flex-row gap-4">
-                        <label class="custom-file-input flex-1 bg-gray-200 text-gray-700 py-3 px-4 rounded-xl font-medium hover:bg-gray-300 transition-colors shadow-sm text-center">
-                            <span id="file-name-span">Choose CSV File (Max 1MB)</span>
-                            <input type="file" name="csv_file" id="csv-file-input" accept=".csv" onchange="document.getElementById('file-name-span').textContent = this.files[0].name">
+                        <label class="custom-file-input flex-1 bg-gray-100 border-2 border-dashed border-gray-300 text-gray-600 py-3 px-4 rounded-xl font-medium hover:bg-gray-200 transition-colors text-center cursor-pointer">
+                            <span id="file-name-span">📂 Choose CSV File</span>
+                            <input type="file" name="csv_file" id="csv-file-input" accept=".csv" onchange="handleFileSelect(this)">
                         </label>
-                        <input type="text" name="column_name" placeholder="CSV Text Column (e.g., 'Comment')"
-                            class="flex-1 p-3 border-2 border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-400 transition-all text-gray-700"
-                            value="{{ request.POST.column_name|default:'text' }}">
+                        <div class="flex-1 relative">
+                            <input type="text" name="column_name" id="column-name-input"
+                                placeholder="Text column name (e.g. Comment)"
+                                class="w-full p-3 border-2 border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-400 transition-all text-gray-700"
+                                value="{{ request.POST.column_name|default:'' }}">
+                            <div id="column-hint" class="mt-1 text-xs text-gray-400 hidden"></div>
+                        </div>
                     </div>
 
                     <div class="flex flex-col sm:flex-row gap-4 pt-2">
@@ -84,23 +87,52 @@
                             <option value="svc" {% if selected_algorithm == "svc" %}selected{% endif %}>Linear SVC</option>
                             <option value="lstm" {% if selected_algorithm == "lstm" %}selected{% endif %}>LSTM</option>
                         </select>
-                        <button type="submit" class="flex-1 bg-teal-500 text-white py-3 rounded-xl font-semibold hover:bg-teal-600 transition-colors shadow-md">
-                            Analyze Sentiment
+                        <button type="submit" id="analyze-btn" class="flex-1 bg-teal-500 text-white py-3 rounded-xl font-semibold hover:bg-teal-600 transition-colors shadow-md flex items-center justify-center gap-2">
+                            <span id="btn-text">Analyze Sentiment</span>
+                            <svg id="btn-spinner" class="hidden animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+                            </svg>
                         </button>
                     </div>
                 </form>
 
                 {% if bulk_summary %}
-                <div class="mt-6 p-5 rounded-2xl shadow-inner bg-blue-500 text-white">
-                    <h3 class="text-xl font-extrabold mb-2">Bulk Analysis Complete!</h3>
-                    <p class="text-sm">Processed {{ bulk_summary.total }} rows.</p>
-                    <ul class="mt-2 text-base font-semibold">
-                        <li><span class="text-green-300">Positive:</span> {{ bulk_summary.Positive }} ({{ bulk_summary.Positive_perc }}%)</li>
-                        <li><span class="text-red-300">Negative:</span> {{ bulk_summary.Negative }} ({{ bulk_summary.Negative_perc }}%)</li>
-                        <li><span class="text-gray-300">Neutral:</span> {{ bulk_summary.Neutral }} ({{ bulk_summary.Neutral_perc }}%)</li>
-                    </ul>
-                </div>
-                {% elif result %}
+                    {% if bulk_summary.error %}
+                    <div class="mt-6 p-4 rounded-2xl bg-red-50 border border-red-200 text-red-700">
+                        <p class="font-semibold">Upload Error</p>
+                        <p class="text-sm mt-1">{{ bulk_summary.error }}</p>
+                    </div>
+                    {% else %}
+                    {% if bulk_summary.column_warning %}
+                    <div class="mt-4 p-3 rounded-xl bg-yellow-50 border border-yellow-200 text-yellow-700 text-sm">
+                        ⚠️ {{ bulk_summary.column_warning }}
+                    </div>
+                    {% endif %}
+                    <div class="mt-4 p-5 rounded-2xl bg-gradient-to-br from-teal-500 to-blue-600 text-white shadow-lg">
+                        <h3 class="text-lg font-bold mb-3">Bulk Analysis Complete</h3>
+                        <p class="text-sm opacity-80 mb-3">Processed <strong>{{ bulk_summary.total }}</strong> rows</p>
+                        <div class="grid grid-cols-3 gap-3 text-center">
+                            <div class="bg-white bg-opacity-20 rounded-xl py-3 px-2">
+                                <div class="text-2xl font-extrabold text-green-200">{{ bulk_summary.Positive_perc }}%</div>
+                                <div class="text-xs mt-1">Positive</div>
+                                <div class="text-sm font-semibold">{{ bulk_summary.Positive }} rows</div>
+                            </div>
+                            <div class="bg-white bg-opacity-20 rounded-xl py-3 px-2">
+                                <div class="text-2xl font-extrabold text-red-200">{{ bulk_summary.Negative_perc }}%</div>
+                                <div class="text-xs mt-1">Negative</div>
+                                <div class="text-sm font-semibold">{{ bulk_summary.Negative }} rows</div>
+                            </div>
+                            <div class="bg-white bg-opacity-20 rounded-xl py-3 px-2">
+                                <div class="text-2xl font-extrabold text-gray-200">{{ bulk_summary.Neutral_perc }}%</div>
+                                <div class="text-xs mt-1">Neutral</div>
+                                <div class="text-sm font-semibold">{{ bulk_summary.Neutral }} rows</div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                {% endif %}
+                {% if result %}
                 <div class="mt-6 p-5 rounded-2xl text-center text-xl font-extrabold shadow-inner
                         {% if result == 'Positive' %} bg-green-500 text-white
                         {% elif result == 'Negative' %} bg-red-500 text-white
@@ -190,20 +222,42 @@
         <!-- Positive Word Cloud -->
         <div class="bg-white p-6 rounded-2xl shadow-lg">
             <h2 class="text-xl font-semibold mb-4 text-gray-800 flex items-center">
-                <span class="inline-block w-3 h-3 rounded-full bg-green-500 mr-2"></span> Positive Words
+                <span class="inline-block w-3 h-3 rounded-full bg-green-500 mr-2"></span>
+                Positive Words
+                {% if positive_words %}<span class="ml-2 text-xs text-gray-400 font-normal">({{ positive_words|length }} words)</span>{% endif %}
             </h2>
-            <div class="h-64 max-w-lg mx-auto">
-                <canvas id="positiveWordCloud" class="w-full h-full"></canvas>
+            <div class="min-h-48 flex flex-wrap items-center justify-center gap-x-3 gap-y-2 p-2">
+                {% if positive_words %}
+                    {% for item in positive_words %}
+                    <span title="{{ item.word }} × {{ item.count }}"
+                          style="font-size:{{ item.size }}px; color:#16a34a; opacity:{{ item.alpha }}; font-weight:{{ item.weight }}; line-height:1.3; cursor:default; transition:transform 0.15s; display:inline-block;"
+                          onmouseover="this.style.transform='scale(1.15)'"
+                          onmouseout="this.style.transform='scale(1)'">{{ item.word }}</span>
+                    {% endfor %}
+                {% else %}
+                    <p class="text-gray-400 text-sm text-center w-full py-6">Analyze text to build the Positive Word Cloud.</p>
+                {% endif %}
             </div>
         </div>
 
         <!-- Negative Word Cloud -->
         <div class="bg-white p-6 rounded-2xl shadow-lg">
             <h2 class="text-xl font-semibold mb-4 text-gray-800 flex items-center">
-                <span class="inline-block w-3 h-3 rounded-full bg-red-500 mr-2"></span> Negative Words
+                <span class="inline-block w-3 h-3 rounded-full bg-red-500 mr-2"></span>
+                Negative Words
+                {% if negative_words %}<span class="ml-2 text-xs text-gray-400 font-normal">({{ negative_words|length }} words)</span>{% endif %}
             </h2>
-            <div class="h-64 max-w-lg mx-auto">
-                <canvas id="negativeWordCloud" class="w-full h-full"></canvas>
+            <div class="min-h-48 flex flex-wrap items-center justify-center gap-x-3 gap-y-2 p-2">
+                {% if negative_words %}
+                    {% for item in negative_words %}
+                    <span title="{{ item.word }} × {{ item.count }}"
+                          style="font-size:{{ item.size }}px; color:#dc2626; opacity:{{ item.alpha }}; font-weight:{{ item.weight }}; line-height:1.3; cursor:default; transition:transform 0.15s; display:inline-block;"
+                          onmouseover="this.style.transform='scale(1.15)'"
+                          onmouseout="this.style.transform='scale(1)'">{{ item.word }}</span>
+                    {% endfor %}
+                {% else %}
+                    <p class="text-gray-400 text-sm text-center w-full py-6">Analyze text to build the Negative Word Cloud.</p>
+                {% endif %}
             </div>
         </div>
 
@@ -211,11 +265,36 @@
 
     <!-- JS Scripts -->
     <script>
+        // CSV file select: show filename and preview column headers
+        function handleFileSelect(input) {
+            const file = input.files[0];
+            if (!file) return;
+            document.getElementById('file-name-span').textContent = '📄 ' + file.name;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const firstLine = e.target.result.split('\n')[0];
+                const cols = firstLine.split(',').map(c => c.replace(/^"|"$/g, '').trim());
+                const hint = document.getElementById('column-hint');
+                const colInput = document.getElementById('column-name-input');
+                hint.textContent = 'Columns found: ' + cols.join(', ');
+                hint.classList.remove('hidden');
+                // Auto-fill column name if input is empty
+                if (!colInput.value && cols.length > 0) colInput.value = cols[0];
+            };
+            reader.readAsText(file);
+        }
+
+        // Show loading spinner on form submit
+        document.querySelector('form').addEventListener('submit', function() {
+            const btn = document.getElementById('analyze-btn');
+            document.getElementById('btn-text').textContent = 'Analyzing...';
+            document.getElementById('btn-spinner').classList.remove('hidden');
+            btn.disabled = true;
+            btn.classList.add('opacity-75', 'cursor-not-allowed');
+        });
+
         const performanceData = JSON.parse('{{ performance_data|safe|escapejs }}');
         const sentimentTrendData = JSON.parse('{{ sentiment_trend_data|default:"{}"|safe|escapejs }}');
-        const positiveWords = JSON.parse('{{ positive_words|default:"[]"|safe|escapejs }}');
-        const negativeWords = JSON.parse('{{ negative_words|default:"[]"|safe|escapejs }}');
-
         // Performance Chart
         const ctx = document.getElementById('performanceChart').getContext('2d');
         new Chart(ctx, {
@@ -264,22 +343,7 @@
             });
         }
 
-        // Word Cloud Initialization
-        function initializeWordCloud(elementId, data, color) {
-            const canvas = document.getElementById(elementId);
-            if (canvas && data.length > 0) {
-                canvas.width = canvas.offsetWidth;
-                canvas.height = canvas.offsetHeight;
-                WordCloud(canvas, { list: data, gridSize: 10, weightFactor: 4, backgroundColor: '#ffffff', color: color, rotateRatio: 0, minSize: 0, shuffle: true, minRotation: 0, maxRotation: 0 });
-            } else if (canvas) {
-                canvas.parentNode.innerHTML = `<p class="text-center text-gray-500 pt-10">Analyze text to build the ${elementId.includes('positive') ? 'Positive' : 'Negative'} Word Cloud.</p>`;
-            }
-        }
-
-        document.addEventListener('DOMContentLoaded', () => {
-            initializeWordCloud('positiveWordCloud', positiveWords, '#22C55E');
-            initializeWordCloud('negativeWordCloud', negativeWords, '#EF4444');
-        });
+        // Word clouds are now rendered server-side via Django templates.
     </script>
 </body>
 </html>
