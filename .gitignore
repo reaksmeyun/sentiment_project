@@ -35,3 +35,6 @@ dist/
 # Saved_model files — downloaded at build time in Dockerfile
 saved_models/
 
+#Secrets file
+secret.md
+
