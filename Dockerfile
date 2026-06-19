@@ -15,7 +15,7 @@ RUN pip install --no-cache-dir -r requirements_render.txt
 COPY . .
 
 # Download NLTK data
-RUN python -c "import nltk; nltk.download('stopwords'); nltk.download('punkt'); nltk.download('punkt_tab'); nltk.download('averaged_perceptron_tagger')"
+RUN python -c "import nltk; nltk.download('stopwords'); nltk.download('punkt'); nltk.download('punkt_tab'); nltk.download('averaged_perceptron_tagger'); nltk.download('vader_lexicon')"
 
 # Run collectstatic + migrations + server at startup
 CMD python manage.py collectstatic --no-input && \

@@ -4,7 +4,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import RequestFactory, TestCase
 
 from .models import AnalysisRecord, WordCount
-from .views import bulk_analyze_csv, extract_word_cloud_words
+from .views import bulk_analyze_csv, extract_sentiment_terms, extract_word_cloud_words
 
 
 class WordCloudTests(TestCase):
@@ -12,6 +12,18 @@ class WordCloudTests(TestCase):
         self.assertEqual(
             extract_word_cloud_words('I love this good app, but it is bad and sad!'),
             ['love', 'good', 'bad', 'sad'],
+        )
+
+    def test_terms_are_classified_by_their_own_polarity(self):
+        self.assertEqual(
+            extract_sentiment_terms('The restaurant was good but the service was bad.'),
+            [('good', 'Positive'), ('bad', 'Negative')],
+        )
+
+    def test_negation_reverses_word_polarity(self):
+        self.assertEqual(
+            extract_sentiment_terms('The food was not good, but it was not terrible.'),
+            [('not good', 'Negative'), ('not terrible', 'Positive')],
         )
 
     @patch('sentiment_app.views.predict_sentiment')
@@ -23,6 +35,15 @@ class WordCloudTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(WordCount.objects.filter(word='love', sentiment='Positive').exists())
         self.assertContains(response, 'love')
+
+    @patch('sentiment_app.views.predict_sentiment')
+    def test_negative_review_does_not_put_good_in_negative_cloud(self, predict_sentiment):
+        predict_sentiment.return_value = ('Negative', ['95.00%', '5.00%'])
+
+        self.client.post('/', {'input_text': 'The food is not good.', 'algorithm': 'lr'})
+
+        self.assertTrue(WordCount.objects.filter(word='not good', sentiment='Negative').exists())
+        self.assertFalse(WordCount.objects.filter(word='good', sentiment='Positive').exists())
 
     @patch('sentiment_app.views.predict_sentiment')
     def test_csv_analysis_adds_words_to_both_clouds(self, predict_sentiment):

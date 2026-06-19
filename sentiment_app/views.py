@@ -42,6 +42,34 @@ try:
 except Exception:
     _NLTK_STOPS = set()
 
+try:
+    from nltk.sentiment.vader import SentimentIntensityAnalyzer
+    _TERM_SENTIMENT_ANALYZER = SentimentIntensityAnalyzer()
+except Exception:
+    # The Docker image installs the lexicon.  Keeping this optional makes the
+    # application usable in a fresh local checkout before NLTK data is fetched.
+    _TERM_SENTIMENT_ANALYZER = None
+
+# Small fallback for local/test environments without NLTK's VADER lexicon.
+# Production uses VADER's much larger curated lexicon.
+_FALLBACK_TERM_SCORES = {
+    'amazing': 2.8, 'awesome': 3.1, 'best': 3.2, 'better': 1.9,
+    'excellent': 2.7, 'favorite': 2.0, 'good': 1.9, 'great': 3.1,
+    'happy': 2.7, 'helpful': 1.9, 'love': 3.2, 'loved': 3.2,
+    'perfect': 2.7, 'recommend': 2.0, 'satisfied': 1.8,
+    'bad': -2.5, 'careless': -1.9, 'disappointing': -2.2,
+    'disappointed': -2.1, 'frustrating': -2.0, 'hate': -2.7,
+    'horrible': -2.5, 'poor': -2.1, 'sad': -2.1, 'terrible': -3.1,
+    'unacceptable': -2.0, 'worst': -3.1,
+}
+
+NEGATION_WORDS = {
+    'not', 'no', 'never', 'neither', 'nor', 'cannot', 'cant', "can't",
+    'dont', "don't", 'doesnt', "doesn't", 'didnt', "didn't", 'isnt',
+    "isn't", 'wasnt', "wasn't", 'werent', "weren't", 'wont', "won't",
+    'wouldnt', "wouldn't", 'couldnt', "couldn't", 'shouldnt', "shouldn't",
+}
+
 # Comprehensive noise word list — pronouns, auxiliaries, filler words
 # These add no insight to sentiment word clouds.
 STOP_WORDS = _NLTK_STOPS | {
@@ -137,6 +165,48 @@ def extract_word_cloud_words(text):
     ]
 
 
+def extract_sentiment_terms(text):
+    """Return ``(term, sentiment)`` pairs using term-level polarity.
+
+    Only words that carry sentiment are returned; topic nouns such as
+    ``restaurant`` and ``product`` are deliberately excluded. A negator in the
+    previous three words reverses polarity and is retained in the display term,
+    so ``not good`` is a negative phrase instead of a positive ``good``.
+    """
+    if not isinstance(text, str):
+        return []
+
+    tokens = re.findall(r"[a-z]+(?:'[a-z]+)?|[.!?,;:]", text.lower())
+    recent_words = []
+    result = []
+
+    for token in tokens:
+        if token in '.!?,;:':
+            recent_words = []
+            continue
+
+        score = 0.0
+        if _TERM_SENTIMENT_ANALYZER is not None:
+            score = _TERM_SENTIMENT_ANALYZER.lexicon.get(token, 0.0)
+        if not score:
+            score = _FALLBACK_TERM_SCORES.get(token, 0.0)
+
+        negator = next(
+            (word for word in reversed(recent_words[-3:]) if word in NEGATION_WORDS),
+            None,
+        )
+        if score and negator:
+            score = -score
+
+        if score:
+            display_term = f'{negator} {token}' if negator else token
+            result.append((display_term, 'Positive' if score > 0 else 'Negative'))
+
+        recent_words.append(token)
+
+    return result
+
+
 def predict_sentiment(text, model_type='lr'):
     # ... (function body remains the same as it doesn't need POS tagging)
     if not MODELS_LOADED:
@@ -184,15 +254,15 @@ def predict_sentiment(text, model_type='lr'):
     return pred_label, probs_percent
 
 
-def update_word_counts(text, sentiment):
+def update_word_counts(text, sentiment=None):
     """
     Tokenizes text, filters by stopwords, and updates the WordCount model.
     (Used for single-text analysis only).
     """
-    for word in extract_word_cloud_words(text):
+    for word, term_sentiment in extract_sentiment_terms(text):
         word_record, created = WordCount.objects.get_or_create(
             word=word,
-            sentiment=sentiment,
+            sentiment=term_sentiment,
             defaults={'count': 1}
         )
         if not created:
@@ -205,8 +275,8 @@ def collect_words(text, sentiment, words_to_update):
     Aggregates word counts in a dictionary using stopword filtering.
     (Used for bulk CSV analysis).
     """
-    for word in extract_word_cloud_words(text):
-        words_to_update[sentiment][word] = words_to_update[sentiment].get(word, 0) + 1
+    for word, term_sentiment in extract_sentiment_terms(text):
+        words_to_update[term_sentiment][word] = words_to_update[term_sentiment].get(word, 0) + 1
 
 
 def bulk_update_word_counts(words_to_update):
