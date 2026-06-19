@@ -59,6 +59,22 @@ class WordCloudTests(TestCase):
         self.assertEqual(AnalysisRecord.objects.count(), 1)
 
     @patch('sentiment_app.views.predict_sentiment')
+    def test_dashboard_form_accepts_a_valid_csrf_token(self, predict_sentiment):
+        predict_sentiment.return_value = ('Positive', ['5.00%', '95.00%'])
+        browser = Client(enforce_csrf_checks=True)
+        browser.get('/')
+        csrf_token = browser.cookies['csrftoken'].value
+
+        response = browser.post(
+            '/',
+            {'input_text': 'Helpful service', 'algorithm': 'lr', 'csrfmiddlewaretoken': csrf_token},
+            HTTP_X_CSRFTOKEN=csrf_token,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Overall feeling')
+
+    @patch('sentiment_app.views.predict_sentiment')
     def test_csv_analysis_adds_words_to_both_clouds(self, predict_sentiment):
         predict_sentiment.side_effect = [
             ('Positive', ['5.00%', '95.00%']),

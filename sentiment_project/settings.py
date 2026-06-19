@@ -19,6 +19,7 @@ SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "<fallback-for-local>")
 
 # Turn off debug automatically on Render
 DEBUG = os.environ.get("DEBUG", "False") == "True"
+IS_HOSTED = bool(os.environ.get("SPACE_ID") or os.environ.get("RENDER"))
 
 ALLOWED_HOSTS = ["*"]
 
@@ -30,10 +31,13 @@ CSRF_TRUSTED_ORIGINS = [
     "http://127.0.0.1:8000",
 ]
 
-CSRF_COOKIE_SECURE = False
-CSRF_COOKIE_SAMESITE = "None"
-SESSION_COOKIE_SAMESITE = "None"
-SESSION_COOKIE_SECURE = True
+# Hugging Face renders Spaces in a cross-site iframe, which requires
+# SameSite=None and HTTPS-only cookies. Local development runs over HTTP and
+# needs Lax, non-secure cookies so forms and private workspaces keep working.
+CSRF_COOKIE_SECURE = IS_HOSTED
+CSRF_COOKIE_SAMESITE = "None" if IS_HOSTED else "Lax"
+SESSION_COOKIE_SAMESITE = "None" if IS_HOSTED else "Lax"
+SESSION_COOKIE_SECURE = IS_HOSTED
 
 USE_X_FORWARDED_HOST = True
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
