@@ -6,6 +6,7 @@ import re
 import csv 
 import io 
 from django.shortcuts import render
+from django.views.decorators.csrf import csrf_exempt
 from .models import AnalysisRecord, WordCount
 from django.db.models import Count 
 from django.db.models.functions import ExtractWeekDay 
@@ -308,6 +309,7 @@ def bulk_analyze_csv(uploaded_file, column_name, algorithm, request):
         return {'total': 0, 'Positive': 0, 'Negative': 0, 'Neutral': 0, 'error': str(e)}
 
 
+@csrf_exempt
 def dashboard(request):
     
     performance_data = [75, 82, 90] 

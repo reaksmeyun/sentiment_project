@@ -25,9 +25,15 @@ ALLOWED_HOSTS = ["*"]
 CSRF_TRUSTED_ORIGINS = [
     "https://*.hf.space",
     "https://*.huggingface.co",
+    "https://huggingface.co",
     "http://localhost:8000",
     "http://127.0.0.1:8000",
 ]
+
+CSRF_COOKIE_SECURE = False
+CSRF_COOKIE_SAMESITE = "None"
+SESSION_COOKIE_SAMESITE = "None"
+SESSION_COOKIE_SECURE = True
 
 USE_X_FORWARDED_HOST = True
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
