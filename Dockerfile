@@ -24,7 +24,7 @@ RUN mkdir -p saved_models && \
     gdown "1rwbAqgTXp_u5eXoI4i5MvM9Gc4QL4C4n" -O saved_models/tfidf_vectorizer.pkl
 
 # Download NLTK data
-RUN python -c "import nltk; nltk.download('stopwords'); nltk.download('punkt'); nltk.download('punkt_tab'); nltk.download('averaged_perceptron_tagger'); nltk.download('averaged_perceptron_tagger_eng')"
+RUN python -c "import nltk; nltk.download('stopwords'); nltk.download('punkt'); nltk.download('punkt_tab'); nltk.download('averaged_perceptron_tagger')"
 
 # Run collectstatic + migrations + server at startup (needs env vars available at runtime)
 CMD python manage.py collectstatic --no-input && \
