@@ -1,3 +1,13 @@
+---
+title: Happysad Ai
+emoji: 😊
+colorFrom: blue
+colorTo: green
+sdk: docker
+pinned: false
+license: mit
+---
+
 # HappySad AI — Sentiment Analysis Web App
 
 A Django web app that classifies tweet/text sentiment as **positive** or **negative** using three models: Logistic Regression, LinearSVC, and LSTM.
@@ -23,6 +33,7 @@ A Django web app that classifies tweet/text sentiment as **positive** or **negat
 ```
 sentiment_project/
 ├── manage.py
+├── Dockerfile                  # Hugging Face Spaces deployment
 ├── start.sh                    # Render startup script
 ├── requirements_render.txt     # Production dependencies
 ├── requirements_backup.txt     # Backup/reference deps
@@ -157,26 +168,15 @@ The dataset is only needed if you want to **retrain** the models. The web app us
 
 ---
 
-## Deployment (Render)
+## Deployment
 
-The project is configured for [Render](https://render.com).
+### Hugging Face Spaces (Primary — Free, 2GB RAM)
+Deployed via Docker. Push to `https://huggingface.co/spaces/reaksmeyun12345/happysad-ai`.
 
-**Build command:**
-```bash
-pip install -r requirements_render.txt
-```
-
-**Start command (via `start.sh`):**
-```bash
-python manage.py collectstatic --no-input
-python manage.py migrate
-gunicorn sentiment_project.wsgi:application --bind 0.0.0.0:$PORT
-```
-
-Set these environment variables in the Render dashboard:
-- `DJANGO_SECRET_KEY` — a strong random string
-- `DEBUG` — `False`
-- `PYTHON_VERSION` — `3.11.9`
+### Render (Alternative)
+**Build command:** `pip install -r requirements_render.txt`
+**Start command:** `bash start.sh`
+Set env vars: `DJANGO_SECRET_KEY`, `DEBUG=False`
 
 ---
 
