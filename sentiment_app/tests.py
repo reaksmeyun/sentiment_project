@@ -1,9 +1,9 @@
 from unittest.mock import patch
 
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import RequestFactory, TestCase
+from django.test import Client, RequestFactory, TestCase
 
-from .models import AnalysisRecord, WordCount
+from .models import AnalysisProject, AnalysisRecord, WordCount
 from .views import bulk_analyze_csv, extract_sentiment_terms, extract_word_cloud_words
 
 
@@ -44,6 +44,19 @@ class WordCloudTests(TestCase):
 
         self.assertTrue(WordCount.objects.filter(word='not good', sentiment='Negative').exists())
         self.assertFalse(WordCount.objects.filter(word='good', sentiment='Positive').exists())
+
+    @patch('sentiment_app.views.predict_sentiment')
+    def test_each_browser_has_a_private_analysis_workspace(self, predict_sentiment):
+        predict_sentiment.return_value = ('Positive', ['5.00%', '95.00%'])
+        first_user = Client()
+        second_user = Client()
+
+        first_user.post('/', {'input_text': 'I love this', 'algorithm': 'lr'})
+        second_response = second_user.get('/')
+
+        self.assertEqual(AnalysisProject.objects.count(), 2)
+        self.assertNotContains(second_response, 'I love this')
+        self.assertEqual(AnalysisRecord.objects.count(), 1)
 
     @patch('sentiment_app.views.predict_sentiment')
     def test_csv_analysis_adds_words_to_both_clouds(self, predict_sentiment):

@@ -6,8 +6,7 @@ import re
 import csv
 import io
 from django.shortcuts import render
-from django.views.decorators.csrf import csrf_exempt
-from .models import AnalysisRecord, WordCount
+from .models import AnalysisProject, AnalysisRecord, UploadBatch, WordCount
 from django.db.models import Count
 from django.db.models.functions import ExtractWeekDay
 from datetime import date, timedelta
@@ -207,6 +206,21 @@ def extract_sentiment_terms(text):
     return result
 
 
+def get_current_project(request):
+    """Return the private analysis workspace for the current browser session."""
+    if not request.session.session_key:
+        request.session.create()
+    project_id = request.session.get('active_project_id')
+    project = AnalysisProject.objects.filter(
+        id=project_id,
+        owner_session_key=request.session.session_key,
+    ).first()
+    if project is None:
+        project = AnalysisProject.objects.create(owner_session_key=request.session.session_key)
+        request.session['active_project_id'] = project.id
+    return project
+
+
 def predict_sentiment(text, model_type='lr'):
     # ... (function body remains the same as it doesn't need POS tagging)
     if not MODELS_LOADED:
@@ -254,7 +268,7 @@ def predict_sentiment(text, model_type='lr'):
     return pred_label, probs_percent
 
 
-def update_word_counts(text, sentiment=None):
+def update_word_counts(text, sentiment=None, project=None):
     """
     Tokenizes text, filters by stopwords, and updates the WordCount model.
     (Used for single-text analysis only).
@@ -263,6 +277,7 @@ def update_word_counts(text, sentiment=None):
         word_record, created = WordCount.objects.get_or_create(
             word=word,
             sentiment=term_sentiment,
+            project=project,
             defaults={'count': 1}
         )
         if not created:
@@ -279,23 +294,30 @@ def collect_words(text, sentiment, words_to_update):
         words_to_update[term_sentiment][word] = words_to_update[term_sentiment].get(word, 0) + 1
 
 
-def bulk_update_word_counts(words_to_update):
+def bulk_update_word_counts(words_to_update, project=None):
     """Efficiently updates the WordCount table using the aggregated dictionary."""
     for sentiment, word_counts in words_to_update.items():
         for word, count_increment in word_counts.items():
             # Try to update existing record
             try:
-                word_record = WordCount.objects.get(word=word, sentiment=sentiment)
+                word_record = WordCount.objects.get(
+                    word=word, sentiment=sentiment, project=project,
+                )
                 word_record.count += count_increment
                 word_record.save()
             # If not found, create a new record
             except WordCount.DoesNotExist:
-                WordCount.objects.create(word=word, sentiment=sentiment, count=count_increment)
+                WordCount.objects.create(
+                    word=word, sentiment=sentiment, count=count_increment,
+                    project=project,
+                )
 
 
-def get_word_cloud_data(sentiment):
+def get_word_cloud_data(sentiment, project):
     """Returns top words with pre-calculated display sizes for server-side rendering."""
-    qs = list(WordCount.objects.filter(sentiment=sentiment).order_by('-count')[:50])
+    qs = list(WordCount.objects.filter(
+        sentiment=sentiment, project=project,
+    ).order_by('-count')[:50])
     if not qs:
         return []
     max_c = qs[0].count
@@ -312,12 +334,13 @@ def get_word_cloud_data(sentiment):
     return result
 
 
-def get_sentiment_trend_data():
+def get_sentiment_trend_data(project):
     """Retrieves sentiment trend data dynamically from the database for the last 7 days."""
     start_date = date.today() - timedelta(days=7)
     
     sentiment_counts = AnalysisRecord.objects.filter(
-        analyzed_at__gte=start_date
+        analyzed_at__gte=start_date,
+        project=project,
     ).annotate(
         day=ExtractWeekDay('analyzed_at')
     ).values('day', 'result').annotate(
@@ -330,7 +353,6 @@ def get_sentiment_trend_data():
         'labels': DAY_LABELS,
         'positive': [0] * 7,
         'negative': [0] * 7,
-        'accuracy_trend': [75, 78, 80, 82, 85, 87, 85] # Mocked/Placeholder
     }
     
     for item in sentiment_counts:
@@ -349,11 +371,18 @@ def get_sentiment_trend_data():
 # --- MAIN VIEW FUNCTIONS ---
 # ----------------------------------------
 
-def bulk_analyze_csv(uploaded_file, column_name, algorithm, request):
+def bulk_analyze_csv(uploaded_file, column_name, algorithm, request, project=None):
     """Reads a CSV file, analyzes the specified column, returns a summary."""
     summary = {'total': 0, 'Positive': 0, 'Negative': 0, 'Neutral': 0}
     new_analysis_records = []
     words_to_update = {'Positive': {}, 'Negative': {}}
+    upload_batch = None
+    if project is not None:
+        upload_batch = UploadBatch.objects.create(
+            project=project,
+            filename=uploaded_file.name[:255],
+            source_column=column_name[:120],
+        )
 
     # Try multiple encodings — many CSVs are not pure UTF-8
     raw_bytes = uploaded_file.read()
@@ -400,7 +429,10 @@ def bulk_analyze_csv(uploaded_file, column_name, algorithm, request):
             summary['total'] += 1
 
             new_analysis_records.append(
-                AnalysisRecord(input_text=text[:1000], result=pred_label, algorithm=algorithm)
+                AnalysisRecord(
+                    input_text=text[:1000], result=pred_label, algorithm=algorithm,
+                    project=project, upload_batch=upload_batch,
+                )
             )
 
             if pred_label in ('Positive', 'Negative'):
@@ -412,7 +444,11 @@ def bulk_analyze_csv(uploaded_file, column_name, algorithm, request):
         if new_analysis_records:
             AnalysisRecord.objects.bulk_create(new_analysis_records)
 
-        bulk_update_word_counts(words_to_update)
+        bulk_update_word_counts(words_to_update, project=project)
+
+        if upload_batch is not None:
+            upload_batch.total_rows = summary['total']
+            upload_batch.save(update_fields=['total_rows'])
 
         if summary['total'] > 0:
             summary['Positive_perc'] = f"{summary['Positive'] / summary['total'] * 100:.1f}"
@@ -427,18 +463,16 @@ def bulk_analyze_csv(uploaded_file, column_name, algorithm, request):
         return {**summary, 'error': f'Error processing CSV: {str(e)}'}
 
 
-@csrf_exempt
 def dashboard(request):
-    
-    performance_data = [75, 82, 90] 
+    project = get_current_project(request)
 
     # 1. Initialize context with defaults for form fields
     context = {
         'result': None,
         'probs_percent': None,
         'bulk_summary': None, 
-        'performance_data': performance_data,
-        'analysis_history': AnalysisRecord.objects.all().order_by('-analyzed_at')[:20],
+        'analysis_history': project.records.all()[:20],
+        'project': project,
         'positive_words': [],
         'negative_words': [],
         'sentiment_trend_data': None,
@@ -468,7 +502,9 @@ def dashboard(request):
             pass # The rest of the page data loading below will still run
         
         elif csv_file:
-            summary = bulk_analyze_csv(csv_file, column_name, model_key, request)
+            summary = bulk_analyze_csv(
+                csv_file, column_name, model_key, request, project=project,
+            )
             context['bulk_summary'] = summary
             
         elif input_text:
@@ -480,21 +516,22 @@ def dashboard(request):
             AnalysisRecord.objects.create(
                 input_text=input_text,
                 result=pred_label,
-                algorithm=algorithm
+                algorithm=algorithm,
+                project=project,
             )
             
             # Calls the smart, POS-filtered single-text updater
             if pred_label in ('Positive', 'Negative'):
                 try:
-                    update_word_counts(input_text, pred_label)
+                    update_word_counts(input_text, pred_label, project=project)
                 except Exception:
                     pass
         
     # 2. FINAL DATA FETCH (Runs for both GET and POST)
     # This must run after the POST logic so it can fetch the updated history/word counts
-    context['analysis_history'] = AnalysisRecord.objects.all().order_by('-analyzed_at')[:20]
-    context['positive_words'] = get_word_cloud_data('Positive')
-    context['negative_words'] = get_word_cloud_data('Negative')
-    context['sentiment_trend_data'] = json.dumps(get_sentiment_trend_data())
+    context['analysis_history'] = project.records.all()[:20]
+    context['positive_words'] = get_word_cloud_data('Positive', project)
+    context['negative_words'] = get_word_cloud_data('Negative', project)
+    context['sentiment_trend_data'] = json.dumps(get_sentiment_trend_data(project))
         
     return render(request, 'dashboard.html', context)

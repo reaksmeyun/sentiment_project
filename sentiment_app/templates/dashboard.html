@@ -4,7 +4,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>Sentiment Analysis Dashboard</title>
+    <title>HappySad — Feedback Insights</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="shortcut icon" href="{% static 'favicon.ico' %}" type="image/x-icon">
     <link rel="shortcut icon" href="{% static 'project/favicon.ico' %}" type="image/x-icon">
@@ -36,15 +36,13 @@
                 <img src="{% static 'HappySad.png' %}" alt="Logo" class="h-24 w-24 rounded-full border-2 border-gray-200">
             </div>
             <div class="hidden md:flex items-center space-x-10">
-                <a href="#" class="text-gray-700 hover:text-teal-500 font-medium transition-colors">Dashboard</a>
-                <a href="#" class="text-gray-700 hover:text-teal-500 font-medium transition-colors">Reports</a>
-                <a href="#" class="text-gray-700 hover:text-teal-500 font-medium transition-colors">Settings</a>
+                <span class="text-gray-500 text-sm">Private feedback workspace</span>
             </div>
         </div>
     </nav>
 
     <!-- Main content -->
-    <div class="container mx-auto p-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <div class="container mx-auto p-6 max-w-5xl">
 
         <!-- Text Analysis Panel -->
         <div class="space-y-6">
@@ -53,19 +51,20 @@
                     <svg class="w-6 h-6 mr-2 text-teal-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
                     </svg>
-                    Text Analysis (Manual / Bulk)
+                    Understand Your Customer Feedback
                 </h1>
+                <p class="text-gray-500 mb-6">Paste one comment or upload a CSV to discover what customers feel.</p>
 
                 <form method="POST" class="space-y-4" enctype="multipart/form-data">
                     {% csrf_token %}
 
-                    <h3 class="text-lg font-semibold text-gray-700 border-b pb-2">1. Analyze Single Text Comment</h3>
+                    <h3 class="text-lg font-semibold text-gray-700 border-b pb-2">Analyze one comment</h3>
                     <textarea name="input_text" rows="4" placeholder="Type or paste your text here..."
                         class="w-full p-4 border-2 border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-400 transition-all text-gray-700 text-base">{{ request.POST.input_text }}</textarea>
 
                     <p class="text-center text-gray-500 font-bold">--- OR ---</p>
 
-                    <h3 class="text-lg font-semibold text-gray-700 border-b pb-2">2. Analyze Bulk CSV File</h3>
+                    <h3 class="text-lg font-semibold text-gray-700 border-b pb-2">Or analyze many comments</h3>
 
                     <div class="flex flex-col sm:flex-row gap-4">
                         <label class="custom-file-input flex-1 bg-gray-100 border-2 border-dashed border-gray-300 text-gray-600 py-3 px-4 rounded-xl font-medium hover:bg-gray-200 transition-colors text-center cursor-pointer">
@@ -81,14 +80,10 @@
                         </div>
                     </div>
 
-                    <div class="flex flex-col sm:flex-row gap-4 pt-2">
-                        <select name="algorithm" class="flex-1 p-3 border-2 border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-400 transition-all text-gray-700">
-                            <option value="lr" {% if selected_algorithm == "lr" %}selected{% endif %}>Logistic Regression</option>
-                            <option value="svc" {% if selected_algorithm == "svc" %}selected{% endif %}>Linear SVC</option>
-                            <option value="lstm" {% if selected_algorithm == "lstm" %}selected{% endif %}>LSTM</option>
-                        </select>
-                        <button type="submit" id="analyze-btn" class="flex-1 bg-teal-500 text-white py-3 rounded-xl font-semibold hover:bg-teal-600 transition-colors shadow-md flex items-center justify-center gap-2">
-                            <span id="btn-text">Analyze Sentiment</span>
+                    <div class="pt-2">
+                        <input type="hidden" name="algorithm" value="lr">
+                        <button type="submit" id="analyze-btn" class="w-full bg-teal-500 text-white py-3 rounded-xl font-semibold hover:bg-teal-600 transition-colors shadow-md flex items-center justify-center gap-2">
+                            <span id="btn-text">Get Feedback Insights</span>
                             <svg id="btn-spinner" class="hidden animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
@@ -137,35 +132,17 @@
                         {% if result == 'Positive' %} bg-green-500 text-white
                         {% elif result == 'Negative' %} bg-red-500 text-white
                         {% else %} bg-gray-400 text-white {% endif %}">
-                    Analysis Result: <span class="uppercase tracking-wider">{{ result }}</span>
+                    Overall feeling: <span class="uppercase tracking-wider">{{ result }}</span>
                 </div>
                 {% if probs_percent %}
                 <div class="mt-2 text-gray-700 text-sm">
-                    <p>Probabilities:</p>
-                    <ul class="list-disc list-inside">
-                        <li>Negative: {{ probs_percent.0 }}</li>
-                        <li>Positive: {{ probs_percent.1 }}</li>
-                    </ul>
+                    <p class="text-center">Negative signal: {{ probs_percent.0 }} · Positive signal: {{ probs_percent.1 }}</p>
                 </div>
                 {% endif %}
                 {% endif %}
             </div>
         </div>
 
-        <!-- Performance Comparison Panel -->
-        <div class="bg-white p-6 rounded-2xl shadow-lg">
-            <h2 class="text-2xl font-semibold mb-4 text-gray-800 flex items-center">
-                <svg class="w-6 h-6 mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                </svg>
-                Algorithm Performance Comparison
-            </h2>
-            <p class="text-sm text-gray-500 mb-6">Accuracy comparison across different sentiment analysis models.</p>
-            <div class="h-80">
-                <canvas id="performanceChart" class="w-full h-full"></canvas>
-            </div>
-        </div>
     </div>
 
     <!-- Sentiment Trend Panel -->
@@ -176,9 +153,9 @@
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                         d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                 </svg>
-                Sentiment & Accuracy Trend Over Time
+                Customer Sentiment This Week
             </h2>
-            <p class="text-sm text-gray-500 mb-6">Comparison of Positive/Negative sentiment occurrences and Model Accuracy.</p>
+            <p class="text-sm text-gray-500 mb-6">See how positive and negative feedback changes over time.</p>
             <div class="h-96">
                 <canvas id="trendChart" class="w-full h-full"></canvas>
             </div>
@@ -210,7 +187,7 @@
                             {% else %} text-gray-600 {% endif %}">
                             {{ item.result }}
                         </span>
-                        <span class="text-gray-500">Model: {{ item.algorithm }}</span>
+                        <span class="text-gray-500">{{ item.analyzed_at|date:"M j" }}</span>
                     </div>
                 </div>
                 {% empty %}
@@ -223,7 +200,7 @@
         <div class="bg-white p-6 rounded-2xl shadow-lg">
             <h2 class="text-xl font-semibold mb-4 text-gray-800 flex items-center">
                 <span class="inline-block w-3 h-3 rounded-full bg-green-500 mr-2"></span>
-                Positive Words
+                What Customers Appreciate
                 {% if positive_words %}<span class="ml-2 text-xs text-gray-400 font-normal">({{ positive_words|length }} words)</span>{% endif %}
             </h2>
             <div class="min-h-48 flex flex-wrap items-center justify-center gap-x-3 gap-y-2 p-2">
@@ -244,7 +221,7 @@
         <div class="bg-white p-6 rounded-2xl shadow-lg">
             <h2 class="text-xl font-semibold mb-4 text-gray-800 flex items-center">
                 <span class="inline-block w-3 h-3 rounded-full bg-red-500 mr-2"></span>
-                Negative Words
+                What Needs Improvement
                 {% if negative_words %}<span class="ml-2 text-xs text-gray-400 font-normal">({{ negative_words|length }} words)</span>{% endif %}
             </h2>
             <div class="min-h-48 flex flex-wrap items-center justify-center gap-x-3 gap-y-2 p-2">
@@ -293,31 +270,7 @@
             btn.classList.add('opacity-75', 'cursor-not-allowed');
         });
 
-        const performanceData = JSON.parse('{{ performance_data|safe|escapejs }}');
         const sentimentTrendData = JSON.parse('{{ sentiment_trend_data|default:"{}"|safe|escapejs }}');
-        // Performance Chart
-        const ctx = document.getElementById('performanceChart').getContext('2d');
-        new Chart(ctx, {
-            type: 'bar',
-            data: {
-                labels: ['Logistic Regression', 'Linear SVC', 'LSTM'],
-                datasets: [{
-                    label: 'Accuracy (%)',
-                    data: performanceData,
-                    backgroundColor: ['#3B82F6', '#22C55E', '#EF4444'],
-                    borderColor: ['#3B82F6', '#22C55E', '#EF4444'],
-                    borderWidth: 1,
-                    borderRadius: 8,
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { legend: { display: false }, title: { display: true, text: 'Model Accuracy Comparison', font: { size: 16 } } },
-                scales: { y: { beginAtZero: true, max: 100, title: { display: true, text: 'Accuracy (%)' } }, x: { grid: { display: false } } }
-            }
-        });
-
         // Trend Chart
         if (sentimentTrendData && sentimentTrendData.labels && sentimentTrendData.labels.length > 0) {
             const trendCtx = document.getElementById('trendChart').getContext('2d');
@@ -327,8 +280,7 @@
                     labels: sentimentTrendData.labels,
                     datasets: [
                         { label: 'Positive Count', data: sentimentTrendData.positive, borderColor: '#22C55E', backgroundColor: 'rgba(34, 197, 94, 0.1)', fill: true, yAxisID: 'y-count', tension: 0.3 },
-                        { label: 'Negative Count', data: sentimentTrendData.negative, borderColor: '#EF4444', backgroundColor: 'rgba(239, 68, 68, 0.1)', fill: true, yAxisID: 'y-count', tension: 0.3 },
-                        { label: 'Model Accuracy (%)', data: sentimentTrendData.accuracy_trend, borderColor: '#3B82F6', backgroundColor: 'transparent', borderDash: [5, 5], pointRadius: 5, fill: false, yAxisID: 'y-accuracy', tension: 0 }
+                        { label: 'Negative Count', data: sentimentTrendData.negative, borderColor: '#EF4444', backgroundColor: 'rgba(239, 68, 68, 0.1)', fill: true, yAxisID: 'y-count', tension: 0.3 }
                     ]
                 },
                 options: {
@@ -336,8 +288,7 @@
                     maintainAspectRatio: false,
                     plugins: { legend: { position: 'top' } },
                     scales: {
-                        'y-count': { type: 'linear', position: 'left', beginAtZero: true, title: { display: true, text: 'Sentiment Count' } },
-                        'y-accuracy': { type: 'linear', position: 'right', beginAtZero: false, max: 100, grid: { drawOnChartArea: false }, title: { display: true, text: 'Accuracy (%)' } }
+                        'y-count': { type: 'linear', position: 'left', beginAtZero: true, title: { display: true, text: 'Feedback count' } }
                     }
                 }
             });
