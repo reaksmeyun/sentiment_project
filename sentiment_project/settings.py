@@ -20,7 +20,19 @@ SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "<fallback-for-local>")
 # Turn off debug automatically on Render
 DEBUG = os.environ.get("DEBUG", "False") == "True"
 
-ALLOWED_HOSTS = ["*", "localhost", "127.0.0.1"]
+ALLOWED_HOSTS = ["*"]
+
+CSRF_TRUSTED_ORIGINS = [
+    "https://*.hf.space",
+    "https://*.huggingface.co",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+]
+
+USE_X_FORWARDED_HOST = True
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+X_FRAME_OPTIONS = "ALLOWALL"
 
 
 # ------------------------------------------------------------
